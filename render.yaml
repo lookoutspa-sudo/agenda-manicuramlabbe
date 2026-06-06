@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: agenda-manicura-api
+    runtime: docker
+    plan: starter
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /app/storage
+      - key: APP_TIMEZONE
+        value: America/Santiago
+      - key: WHATSAPP_ENABLED
+        value: "true"
+      - key: WHATSAPP_SESSION_PATH
+        value: /app/storage/whatsapp-session
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+    disk:
+      name: agenda-data
+      mountPath: /app/storage
+      sizeGB: 1

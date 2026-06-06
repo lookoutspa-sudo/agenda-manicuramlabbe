@@ -1,0 +1,16 @@
+{
+  "name": "Marcela Labbé - Nails Recovery",
+  "short_name": "Marcela Labbé",
+  "description": "Agenda de horas para servicios de manicure y cuidado de uñas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#990E0E",
+  "icons": [
+    {
+      "src": "/assets/logo-red.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "marcela-labbe-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "seed": "node server/src/seed.js",
+    "dev": "concurrently -n API,WEB \"node server/src/index.js\" \"npm run dev --prefix client\"",
+    "setup:mac": "bash scripts/setup-mac.sh",
+    "check:server": "node --check server/src/index.js && node --check server/src/store.js && node --check server/src/whatsapp.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.6",
+    "node-cron": "^3.0.3",
+    "zod": "^3.24.1"
+  }
+}
