@@ -9,6 +9,7 @@ const REMINDER_WINDOW_MINUTES = Number(process.env.REMINDER_WINDOW_MINUTES || 30
 let client = null;
 let isReady = false;
 let reminderCronStarted = false;
+let lastQr = null;
 
 function whatsappEnabled() {
   return process.env.WHATSAPP_ENABLED === "true";
@@ -70,6 +71,7 @@ export async function initWhatsApp() {
   });
 
   client.on("qr", (qr) => {
+    lastQr = qr;
     console.log("QR_RECEIVED:", qr);
     import("qrcode-terminal")
       .then((qrcode) => (qrcode.default || qrcode).generate(qr, { small: true }))
@@ -82,6 +84,7 @@ export async function initWhatsApp() {
 
   client.on("ready", () => {
     isReady = true;
+    lastQr = null;
     console.log("Cliente de WhatsApp conectado y listo");
     startReminderCron();
   });
