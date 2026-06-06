@@ -9,19 +9,19 @@
     "check:server": "node --check server/src/index.js && node --check server/src/store.js && node --check server/src/whatsapp.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "concurrently": "^9.1.2",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.26.0",
-    "concurrently": "^9.1.2",
-    "cors": "^2.8.5",
     "helmet": "^7.1.0",
-    "morgan": "^1.10.0",
-    "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "cookie-parser": "^1.4.6",
+    "morgan": "^1.10.0",
     "node-cron": "^3.0.3",
-    "zod": "^3.24.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.7",
+    "zod": "^3.24.1"
   }
 }

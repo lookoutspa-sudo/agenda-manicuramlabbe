@@ -54,21 +54,32 @@ export async function initWhatsApp() {
   const executablePath = getChromeExecutablePath();
 
   client = new Client({
-    authStrategy: new LocalAuth({ dataPath: sessionPath }),
-    puppeteer: {
-      headless: true,
-      ...(executablePath ? { executablePath } : {}),
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-zygote",
-      ],
-    },
-    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  });
+  authStrategy: new LocalAuth({
+    clientId: "marcela-labbe",
+    dataPath: sessionPath,
+  }),
+  authTimeoutMs: 120000,
+  qrMaxRetries: 0,
+  takeoverOnConflict: true,
+  takeoverTimeoutMs: 0,
+  puppeteer: {
+    headless: true,
+    ...(executablePath ? { executablePath } : {}),
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-sync",
+      "--password-store=basic",
+      "--use-mock-keychain",
+    ],
+  },
+});
 
   client.on("qr", (qr) => {
     lastQr = qr;
