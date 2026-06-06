@@ -10,7 +10,7 @@ import { migrate, nextId, nowIso, readData, updateData } from "./store.js";
 import { signToken, requireAdmin } from "./auth.js";
 import { getAvailableSlots, ensureSlotAvailable } from "./availability.js";
 import { loginSchema, bookingSchema, serviceSchema, servicePatchSchema, statusSchema, parseOrError } from "./validators.js";
-import { initWhatsApp, sendBookingConfirmation, sendBookingCancellation, closeWhatsApp, isWhatsAppReady, getLatestWhatsAppQr } from "./whatsapp.js";
+import {initWhatsApp, sendBookingConfirmation, sendBookingCancellation, closeWhatsApp, isWhatsAppReady, getLatestWhatsAppQr} from "./whatsapp.js";
 
 migrate();
 
@@ -62,6 +62,7 @@ function publicUser(user) {
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "Marcela Labbé API" });
 });
+
 app.get("/api/whatsapp/qr", async (req, res) => {
   try {
     if (process.env.WHATSAPP_ENABLED !== "true") {
@@ -85,8 +86,7 @@ app.get("/api/whatsapp/qr", async (req, res) => {
           </head>
           <body style="font-family: Arial; text-align: center; padding: 40px;">
             <h1>QR todavía no está listo</h1>
-            <p>Esta página se actualizará sola en 5 segundos.</p>
-            <p>Revisa que WhatsApp no tenga error en los logs de Render.</p>
+            <p>Esta página se actualizará automáticamente en 5 segundos.</p>
           </body>
         </html>
       `);
@@ -106,105 +106,7 @@ app.get("/api/whatsapp/qr", async (req, res) => {
   }
 });
 
-app.get("/api/whatsapp/qr", async (req, res) => {
-  try {
-    if (process.env.WHATSAPP_ENABLED !== "true") {
-      return res.status(400).send("WhatsApp está desactivado.");
-    }
 
-    if (isWhatsAppReady()) {
-      return res.send(`
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>WhatsApp conectado</title>
-            <style>
-              body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-              h1 { color: #128c7e; }
-            </style>
-          </head>
-          <body>
-            <h1>WhatsApp ya está conectado</h1>
-            <p>No necesitas escanear otro QR.</p>
-          </body>
-        </html>
-      `);
-    }
-
-    const qr = getLatestWhatsAppQr();
-
-    if (!qr) {
-      return res.send(`
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <meta http-equiv="refresh" content="5" />
-            <title>Esperando QR</title>
-            <style>
-              body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-            </style>
-          </head>
-          <body>
-            <h1>QR todavía no está listo</h1>
-            <p>Esta página se actualizará automáticamente en 5 segundos.</p>
-          </body>
-        </html>
-      `);
-    }
-
-    const dataUrl = await QRCode.toDataURL(qr, {
-      width: 420,
-      margin: 3,
-    });
-
-    return res.send(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta http-equiv="refresh" content="25" />
-          <title>Escanear WhatsApp</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              text-align: center;
-              padding: 24px;
-              background: #f5f5f5;
-            }
-            .card {
-              background: white;
-              display: inline-block;
-              padding: 24px;
-              border-radius: 16px;
-              box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-            }
-            img {
-              width: 420px;
-              max-width: 90vw;
-              height: auto;
-            }
-            p {
-              font-size: 18px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>Escanear WhatsApp</h1>
-            <p>Abre WhatsApp de Marcela → Dispositivos vinculados → Vincular dispositivo.</p>
-            <img src="${dataUrl}" alt="QR WhatsApp" />
-            <p>Si no escanea, espera unos segundos. La página se actualiza sola.</p>
-          </div>
-        </body>
-      </html>
-    `);
-  } catch (error) {
-    console.error("Error generando QR WhatsApp:", error);
-    return res.status(500).send("Error generando QR WhatsApp.");
-  }
-});
 
 app.get("/api/whatsapp/status", requireAdmin, (req, res) => {
   res.json({
