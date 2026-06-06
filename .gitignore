@@ -11,3 +11,13 @@ server-whatsapp-session/
 storage/
 *.log
 whatsapp-session*.tar.gz
+.env
+node_modules/
+client/node_modules/
+server-whatsapp-session/
+.wwebjs_cache/
+.env
+node_modules/
+client/node_modules/
+server-whatsapp-session/
+.wwebjs_cache/
