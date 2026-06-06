@@ -4,12 +4,13 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import QRCode from "qrcode";
 import bcrypt from "bcryptjs";
 import { migrate, nextId, nowIso, readData, updateData } from "./store.js";
 import { signToken, requireAdmin } from "./auth.js";
 import { getAvailableSlots, ensureSlotAvailable } from "./availability.js";
 import { loginSchema, bookingSchema, serviceSchema, servicePatchSchema, statusSchema, parseOrError } from "./validators.js";
-import {initWhatsApp, sendBookingConfirmation, sendBookingCancellation, closeWhatsApp, isWhatsAppReady, getLatestWhatsAppQr} from "./whatsapp.js";
+import { initWhatsApp, sendBookingConfirmation, sendBookingCancellation, closeWhatsApp, isWhatsAppReady, getLatestWhatsAppQr } from "./whatsapp.js";
 
 migrate();
 
@@ -61,7 +62,49 @@ function publicUser(user) {
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "Marcela Labbé API" });
 });
+app.get("/api/whatsapp/qr", async (req, res) => {
+  try {
+    if (process.env.WHATSAPP_ENABLED !== "true") {
+      return res.status(400).send("WhatsApp está desactivado.");
+    }
 
+    if (isWhatsAppReady()) {
+      return res.send("WhatsApp ya está conectado.");
+    }
+
+    const qr = getLatestWhatsAppQr();
+
+    if (!qr) {
+      return res.send(`
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta http-equiv="refresh" content="5" />
+            <title>Esperando QR</title>
+          </head>
+          <body style="font-family: Arial; text-align: center; padding: 40px;">
+            <h1>QR todavía no está listo</h1>
+            <p>Esta página se actualizará sola en 5 segundos.</p>
+            <p>Revisa que WhatsApp no tenga error en los logs de Render.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    const png = await QRCode.toBuffer(qr, {
+      type: "png",
+      width: 600,
+      margin: 4,
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    res.type("png").send(png);
+  } catch (error) {
+    console.error("Error generando QR WhatsApp:", error.message);
+    res.status(500).send("Error generando QR WhatsApp.");
+  }
+});
 
 app.get("/api/whatsapp/qr", async (req, res) => {
   try {
