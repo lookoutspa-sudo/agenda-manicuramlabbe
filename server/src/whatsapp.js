@@ -334,7 +334,9 @@ function startReminderCron() {
 }
 
 export async function closeWhatsApp() {
-  if (!client) return;
+  if (!client) {
+    return;
+  }
 
   try {
     await client.destroy();
@@ -344,9 +346,14 @@ export async function closeWhatsApp() {
     client = null;
     isReady = false;
     reminderCronStarted = false;
+    lastQr = null;
   }
 }
 
 export function isWhatsAppReady() {
   return isReady;
+}
+
+export function getLatestWhatsAppQr() {
+  return lastQr;
 }
