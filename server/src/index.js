@@ -4,7 +4,6 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import QRCode from "qrcode";
 import bcrypt from "bcryptjs";
 import { migrate, nextId, nowIso, readData, updateData } from "./store.js";
 import { signToken, requireAdmin } from "./auth.js";
