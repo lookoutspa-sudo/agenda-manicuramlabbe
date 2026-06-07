@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import cron from "node-cron";
 import { readData, updateData, nowIso } from "./store.js";
 
@@ -6,131 +5,49 @@ const TIME_ZONE = process.env.APP_TIMEZONE || "America/Santiago";
 const REMINDER_CRON = process.env.REMINDER_CRON || "*/5 * * * *";
 const REMINDER_WINDOW_MINUTES = Number(process.env.REMINDER_WINDOW_MINUTES || 30);
 
-let client = null;
 let isReady = false;
 let reminderCronStarted = false;
-let lastQr = null;
 
 function whatsappEnabled() {
   return process.env.WHATSAPP_ENABLED === "true";
 }
 
-function firstExistingPath(paths) {
-  return paths.find((item) => item && fs.existsSync(item));
+function getCloudConfig() {
+  return {
+    token: process.env.WHATSAPP_CLOUD_TOKEN || "",
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+    graphVersion: process.env.WHATSAPP_GRAPH_VERSION || "v20.0",
+    mode: process.env.WHATSAPP_CLOUD_MODE || "text",
+    language: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "es_CL",
+  };
 }
 
-function getChromeExecutablePath() {
-  return process.env.PUPPETEER_EXECUTABLE_PATH
-    || process.env.CHROME_BIN
-    || firstExistingPath([
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/google-chrome",
-      "/usr/bin/chromium-browser",
-      "/usr/bin/chromium",
-    ]);
+function cloudConfigured() {
+  const config = getCloudConfig();
+  return Boolean(config.token && config.phoneNumberId);
 }
 
-export async function initWhatsApp() {
-  if (!whatsappEnabled()) {
-    console.log("WhatsApp deshabilitado. Define WHATSAPP_ENABLED=true para activarlo.");
-    return;
-  }
-
-  if (client) return;
-
-  let Client;
-  let LocalAuth;
-  try {
-    const pkg = await import("whatsapp-web.js");
-    Client = pkg.Client || pkg.default?.Client;
-    LocalAuth = pkg.LocalAuth || pkg.default?.LocalAuth;
-    if (!Client || !LocalAuth) throw new Error("No se pudo cargar Client/LocalAuth desde whatsapp-web.js");
-  } catch (error) {
-    console.error("Error importando whatsapp-web.js:", error.message);
-    return;
-  }
-
-  const sessionPath = process.env.WHATSAPP_SESSION_PATH || "./server-whatsapp-session";
-  const executablePath = getChromeExecutablePath();
-
-  client = new Client({
-  authStrategy: new LocalAuth({
-    clientId: "marcela-labbe",
-    dataPath: sessionPath,
-  }),
-  authTimeoutMs: 120000,
-  qrMaxRetries: 0,
-  takeoverOnConflict: true,
-  takeoverTimeoutMs: 0,
-  puppeteer: {
-    headless: true,
-    ...(executablePath ? { executablePath } : {}),
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-first-run",
-      "--no-zygote",
-      "--disable-extensions",
-      "--disable-background-networking",
-      "--disable-sync",
-      "--password-store=basic",
-      "--use-mock-keychain",
-    ],
-  },
-});
-
-  client.on("qr", (qr) => {
-    lastQr = qr;
-    console.log("QR_RECEIVED:", qr);
-    import("qrcode-terminal")
-      .then((qrcode) => (qrcode.default || qrcode).generate(qr, { small: true }))
-      .catch(() => {});
-  });
-
-  client.on("authenticated", () => {
-    console.log("Sesión de WhatsApp autenticada");
-  });
-
-  client.on("ready", () => {
-    isReady = true;
-    lastQr = null;
-    console.log("Cliente de WhatsApp conectado y listo");
-    startReminderCron();
-  });
-
-  client.on("auth_failure", (msg) => {
-    isReady = false;
-    console.error("Error de autenticación de WhatsApp:", msg);
-  });
-
-  client.on("disconnected", (reason) => {
-    isReady = false;
-    console.warn("Cliente de WhatsApp desconectado:", reason);
-  });
-
-  try {
-    await client.initialize();
-  } catch (error) {
-    isReady = false;
-    console.error("Error inicializando WhatsApp:", error.message);
-  }
-}
-
-function formatPhoneForWhatsApp(phone) {
+function formatPhoneForCloud(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   let normalized = digits;
 
-  if (normalized.startsWith("00")) normalized = normalized.slice(2);
-  if (normalized.startsWith("9") && normalized.length === 9) normalized = `56${normalized}`;
-  if (normalized.length === 8) normalized = `569${normalized}`;
-
-  if (!/^\d{10,15}$/.test(normalized)) {
-    throw new Error(`Teléfono inválido para WhatsApp: ${phone}`);
+  if (normalized.startsWith("00")) {
+    normalized = normalized.slice(2);
   }
 
-  return `${normalized}@c.us`;
+  if (normalized.startsWith("9") && normalized.length === 9) {
+    normalized = `56${normalized}`;
+  }
+
+  if (normalized.length === 8) {
+    normalized = `569${normalized}`;
+  }
+
+  if (!/^\d{10,15}$/.test(normalized)) {
+    throw new Error(`Teléfono inválido para WhatsApp Cloud API: ${phone}`);
+  }
+
+  return normalized;
 }
 
 function formatDate(date) {
@@ -139,17 +56,93 @@ function formatDate(date) {
   return `${day}/${month}/${year}`;
 }
 
+function cleanMessage(message) {
+  return String(message || "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function sendCloudRequest(payload) {
+  const config = getCloudConfig();
+
+  if (!config.token || !config.phoneNumberId) {
+    throw new Error("Falta WHATSAPP_CLOUD_TOKEN o WHATSAPP_PHONE_NUMBER_ID.");
+  }
+
+  const url = `https://graph.facebook.com/${config.graphVersion}/${config.phoneNumberId}/messages`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+
+  let body;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text };
+  }
+
+  if (!response.ok) {
+    const message = body?.error?.message || body?.raw || `HTTP ${response.status}`;
+    throw new Error(`WhatsApp Cloud API rechazó el envío: ${message}`);
+  }
+
+  return body;
+}
+
+async function sendCloudTextMessage(phone, message) {
+  const to = formatPhoneForCloud(phone);
+
+  return sendCloudRequest({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "text",
+    text: {
+      preview_url: false,
+      body: cleanMessage(message),
+    },
+  });
+}
+
 async function sendMessage(phone, message) {
   if (!whatsappEnabled()) return false;
-  if (!isReady || !client) throw new Error("WhatsApp todavía no está listo");
 
-  const chatId = formatPhoneForWhatsApp(phone);
-  await client.sendMessage(chatId, message.trim());
+  if (!cloudConfigured()) {
+    throw new Error("WhatsApp Cloud API no está configurado.");
+  }
+
+  await sendCloudTextMessage(phone, message);
   return true;
 }
 
 function shouldSendToBooking(booking) {
   return booking?.whatsappConsent !== false && booking?.phone;
+}
+
+export async function initWhatsApp() {
+  if (!whatsappEnabled()) {
+    isReady = false;
+    console.log("WhatsApp deshabilitado. Define WHATSAPP_ENABLED=true para activarlo.");
+    return;
+  }
+
+  if (!cloudConfigured()) {
+    isReady = false;
+    console.error("WhatsApp Cloud API no configurado. Falta token o phone number id.");
+    return;
+  }
+
+  isReady = true;
+  console.log("WhatsApp Cloud API configurado y listo. No usa QR ni Chrome.");
+  startReminderCron();
 }
 
 export async function sendBookingConfirmation(booking, service) {
@@ -259,7 +252,10 @@ function getTimeZoneParts(date, timeZone) {
     hour12: false,
   });
 
-  const values = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  const values = Object.fromEntries(
+    formatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+
   return {
     year: Number(values.year),
     month: Number(values.month),
@@ -279,7 +275,14 @@ function zonedDateTimeToUtc(dateString, timeString, timeZone = TIME_ZONE) {
 
   for (let i = 0; i < 3; i += 1) {
     const parts = getTimeZoneParts(new Date(utcMs), timeZone);
-    const actualAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    const actualAsUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second
+    );
     utcMs += desiredAsUtc - actualAsUtc;
   }
 
@@ -301,7 +304,7 @@ function markBooking(id, fields) {
 }
 
 async function processReminderQueue() {
-  if (!isReady || !client) return;
+  if (!isReady) return;
 
   const data = readData();
 
@@ -315,19 +318,37 @@ async function processReminderQueue() {
     const minutesLeft = minutesUntilBooking(booking);
     if (minutesLeft <= 0) continue;
 
-    if (!booking.reminder24hSent && minutesLeft <= 24 * 60 && minutesLeft > (24 * 60 - REMINDER_WINDOW_MINUTES)) {
+    if (
+      !booking.reminder24hSent &&
+      minutesLeft <= 24 * 60 &&
+      minutesLeft > 24 * 60 - REMINDER_WINDOW_MINUTES
+    ) {
       try {
         const sent = await sendReminder24h(booking, service);
-        if (sent) markBooking(booking.id, { reminder24hSent: true, reminder24hSentAt: nowIso() });
+        if (sent) {
+          markBooking(booking.id, {
+            reminder24hSent: true,
+            reminder24hSentAt: nowIso(),
+          });
+        }
       } catch (error) {
         console.error(`Error enviando recordatorio 24h reserva ${booking.id}:`, error.message);
       }
     }
 
-    if (!booking.reminder5hSent && minutesLeft <= 5 * 60 && minutesLeft > (5 * 60 - REMINDER_WINDOW_MINUTES)) {
+    if (
+      !booking.reminder5hSent &&
+      minutesLeft <= 5 * 60 &&
+      minutesLeft > 5 * 60 - REMINDER_WINDOW_MINUTES
+    ) {
       try {
         const sent = await sendReminder5h(booking, service);
-        if (sent) markBooking(booking.id, { reminder5hSent: true, reminder5hSentAt: nowIso() });
+        if (sent) {
+          markBooking(booking.id, {
+            reminder5hSent: true,
+            reminder5hSentAt: nowIso(),
+          });
+        }
       } catch (error) {
         console.error(`Error enviando recordatorio 5h reserva ${booking.id}:`, error.message);
       }
@@ -348,26 +369,14 @@ function startReminderCron() {
 }
 
 export async function closeWhatsApp() {
-  if (!client) {
-    return;
-  }
-
-  try {
-    await client.destroy();
-  } catch (error) {
-    console.error("Error cerrando WhatsApp:", error.message);
-  } finally {
-    client = null;
-    isReady = false;
-    reminderCronStarted = false;
-    lastQr = null;
-  }
+  isReady = false;
+  reminderCronStarted = false;
 }
 
 export function isWhatsAppReady() {
-  return isReady;
+  return whatsappEnabled() && cloudConfigured() && isReady;
 }
 
 export function getLatestWhatsAppQr() {
-  return lastQr;
+  return null;
 }
