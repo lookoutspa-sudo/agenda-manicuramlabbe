@@ -17,7 +17,7 @@ function getCloudConfig() {
     token: process.env.WHATSAPP_CLOUD_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     graphVersion: process.env.WHATSAPP_GRAPH_VERSION || "v20.0",
-    mode: process.env.WHATSAPP_CLOUD_MODE || "text",
+    confirmationTemplate: process.env.WHATSAPP_TEMPLATE_CONFIRMATION || "reserva_confirmacion",
     language: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "es_CL",
   };
 }
@@ -56,12 +56,6 @@ function formatDate(date) {
   return `${day}/${month}/${year}`;
 }
 
-function cleanMessage(message) {
-  return String(message || "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 async function sendCloudRequest(payload) {
   const config = getCloudConfig();
 
@@ -97,30 +91,30 @@ async function sendCloudRequest(payload) {
   return body;
 }
 
-async function sendCloudTextMessage(phone, message) {
+async function sendCloudTemplateMessage(phone, templateName, languageCode, parameters = []) {
   const to = formatPhoneForCloud(phone);
 
   return sendCloudRequest({
     messaging_product: "whatsapp",
     recipient_type: "individual",
     to,
-    type: "text",
-    text: {
-      preview_url: false,
-      body: cleanMessage(message),
+    type: "template",
+    template: {
+      name: templateName,
+      language: {
+        code: languageCode,
+      },
+      components: [
+        {
+          type: "body",
+          parameters: parameters.map((value) => ({
+            type: "text",
+            text: String(value ?? ""),
+          })),
+        },
+      ],
     },
   });
-}
-
-async function sendMessage(phone, message) {
-  if (!whatsappEnabled()) return false;
-
-  if (!cloudConfigured()) {
-    throw new Error("WhatsApp Cloud API no está configurado.");
-  }
-
-  await sendCloudTextMessage(phone, message);
-  return true;
 }
 
 function shouldSendToBooking(booking) {
@@ -141,103 +135,45 @@ export async function initWhatsApp() {
   }
 
   isReady = true;
-  console.log("WhatsApp Cloud API configurado y listo. No usa QR ni Chrome.");
+  console.log("WhatsApp Cloud API configurado y listo. Producción con plantillas.");
   startReminderCron();
 }
 
 export async function sendBookingConfirmation(booking, service) {
   if (!shouldSendToBooking(booking)) return false;
 
-  const message = `
-🎉 *Reserva registrada*
+  const config = getCloudConfig();
 
-Hola ${booking.clientName}, recibimos tu solicitud de hora.
+  await sendCloudTemplateMessage(booking.phone, config.confirmationTemplate, config.language, [
+    booking.clientName,
+    service.name,
+    formatDate(booking.date),
+    `${booking.startTime} - ${booking.endTime}`,
+  ]);
 
-📋 *Detalles:*
-• Servicio: ${service.name}
-• Fecha: ${formatDate(booking.date)}
-• Hora: ${booking.startTime} - ${booking.endTime}
-• Profesional: Marcela Labbé
-
-Te avisaremos si existe algún cambio.
-
-Belleza. Salud. Confianza. 💅
-`;
-
-  await sendMessage(booking.phone, message);
   console.log(`Confirmación de registro enviada a ${booking.phone}`);
   return true;
 }
 
 export async function sendBookingCancellation(booking, service) {
-  if (!shouldSendToBooking(booking)) return false;
-
-  const message = `
-❌ *Reserva cancelada*
-
-Hola ${booking.clientName}, tu reserva fue cancelada.
-
-📋 *Detalles:*
-• Servicio: ${service.name}
-• Fecha: ${formatDate(booking.date)}
-• Hora: ${booking.startTime}
-
-Si deseas reprogramar, contáctanos.
-
-Belleza. Salud. Confianza. 💅
-`;
-
-  await sendMessage(booking.phone, message);
-  console.log(`Cancelación enviada a ${booking.phone}`);
-  return true;
+  console.log(
+    `Cancelación WhatsApp omitida para ${booking?.phone || "sin teléfono"}: falta plantilla de cancelación aprobada.`
+  );
+  return false;
 }
 
 async function sendReminder24h(booking, service) {
-  if (!shouldSendToBooking(booking)) return false;
-
-  const message = `
-⏰ *Recordatorio de cita*
-
-Hola ${booking.clientName}, te recordamos que mañana tienes una hora agendada.
-
-📋 *Detalles:*
-• Servicio: ${service.name}
-• Fecha: ${formatDate(booking.date)}
-• Hora: ${booking.startTime}
-• Profesional: Marcela Labbé
-
-Si necesitas cancelar o reprogramar, avísanos con tiempo.
-
-Belleza. Salud. Confianza. 💅
-`;
-
-  await sendMessage(booking.phone, message);
-  console.log(`Recordatorio 24h enviado a ${booking.phone}`);
-  return true;
+  console.log(
+    `Recordatorio 24h omitido para ${booking?.phone || "sin teléfono"}: falta plantilla recordatorio_24h aprobada.`
+  );
+  return false;
 }
 
 async function sendReminder5h(booking, service) {
-  if (!shouldSendToBooking(booking)) return false;
-
-  const message = `
-⏰ *Recordatorio de cita*
-
-Hola ${booking.clientName}, te recordamos que hoy tienes una hora agendada en aproximadamente 5 horas.
-
-📋 *Detalles:*
-• Servicio: ${service.name}
-• Fecha: ${formatDate(booking.date)}
-• Hora: ${booking.startTime}
-• Profesional: Marcela Labbé
-
-Te esperamos.
-
-Belleza. Salud. Confianza. 💅
-`;
-
-  await sendMessage(booking.phone, message);
-  console.log(`Recordatorio 5h enviado a ${booking.phone}`);
-  return true;
+  console.log(
+    `Recordatorio 5h omitido para ${booking?.phone || "sin teléfono"}: falta plantilla recordatorio_5h aprobada.`
+  );
+  return false;
 }
 
 function getTimeZoneParts(date, timeZone) {
