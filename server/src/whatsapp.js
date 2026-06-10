@@ -17,8 +17,17 @@ function getCloudConfig() {
     token: process.env.WHATSAPP_CLOUD_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     graphVersion: process.env.WHATSAPP_GRAPH_VERSION || "v20.0",
-    confirmationTemplate: process.env.WHATSAPP_TEMPLATE_CONFIRMATION || "reserva_confirmacion",
     language: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "es_CL",
+
+    confirmationTemplate: process.env.WHATSAPP_TEMPLATE_CONFIRMATION || "reserva_confirmacion",
+    cancellationTemplate: process.env.WHATSAPP_TEMPLATE_CANCELLATION || "reserva_cancelacion",
+
+    reminder24hTemplate: process.env.WHATSAPP_TEMPLATE_REMINDER_24H || "recordatorio_24h",
+    reminder3hTemplate: process.env.WHATSAPP_TEMPLATE_REMINDER_3H || "recordatorio_3h",
+    reminder1hTemplate: process.env.WHATSAPP_TEMPLATE_REMINDER_1H || "recordatorio_1h",
+
+    adminBookingTemplate: process.env.WHATSAPP_TEMPLATE_ADMIN_BOOKING || "nueva_reserva_admin",
+    adminPhone: process.env.ADMIN_WHATSAPP_PHONE || "",
   };
 }
 
@@ -31,17 +40,9 @@ function formatPhoneForCloud(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   let normalized = digits;
 
-  if (normalized.startsWith("00")) {
-    normalized = normalized.slice(2);
-  }
-
-  if (normalized.startsWith("9") && normalized.length === 9) {
-    normalized = `56${normalized}`;
-  }
-
-  if (normalized.length === 8) {
-    normalized = `569${normalized}`;
-  }
+  if (normalized.startsWith("00")) normalized = normalized.slice(2);
+  if (normalized.startsWith("9") && normalized.length === 9) normalized = `56${normalized}`;
+  if (normalized.length === 8) normalized = `569${normalized}`;
 
   if (!/^\d{10,15}$/.test(normalized)) {
     throw new Error(`Teléfono inválido para WhatsApp Cloud API: ${phone}`);
@@ -54,6 +55,19 @@ function formatDate(date) {
   const [year, month, day] = String(date).split("-");
   if (!year || !month || !day) return date;
   return `${day}/${month}/${year}`;
+}
+
+function bookingTimeRange(booking) {
+  return `${booking.startTime} - ${booking.endTime}`;
+}
+
+function bookingTemplateParams(booking, service) {
+  return [
+    booking.clientName,
+    service.name,
+    formatDate(booking.date),
+    bookingTimeRange(booking),
+  ];
 }
 
 async function sendCloudRequest(payload) {
@@ -144,36 +158,92 @@ export async function sendBookingConfirmation(booking, service) {
 
   const config = getCloudConfig();
 
-  await sendCloudTemplateMessage(booking.phone, config.confirmationTemplate, config.language, [
-    booking.clientName,
-    service.name,
-    formatDate(booking.date),
-    `${booking.startTime} - ${booking.endTime}`,
-  ]);
+  await sendCloudTemplateMessage(
+    booking.phone,
+    config.confirmationTemplate,
+    config.language,
+    bookingTemplateParams(booking, service)
+  );
 
-  console.log(`Confirmación de registro enviada a ${booking.phone}`);
+  console.log(`Confirmación de registro enviada al cliente ${booking.phone}`);
+
+  if (config.adminPhone) {
+    await sendCloudTemplateMessage(config.adminPhone, config.adminBookingTemplate, config.language, [
+      booking.clientName,
+      booking.phone,
+      service.name,
+      formatDate(booking.date),
+      bookingTimeRange(booking),
+    ]);
+
+    console.log(`Aviso de nueva reserva enviado a Marcela ${config.adminPhone}`);
+  }
+
   return true;
 }
 
 export async function sendBookingCancellation(booking, service) {
-  console.log(
-    `Cancelación WhatsApp omitida para ${booking?.phone || "sin teléfono"}: falta plantilla de cancelación aprobada.`
+  if (!shouldSendToBooking(booking)) return false;
+
+  const config = getCloudConfig();
+
+  await sendCloudTemplateMessage(
+    booking.phone,
+    config.cancellationTemplate,
+    config.language,
+    bookingTemplateParams(booking, service)
   );
-  return false;
+
+  console.log(`Cancelación de reserva enviada a ${booking.phone}`);
+  return true;
 }
 
 async function sendReminder24h(booking, service) {
-  console.log(
-    `Recordatorio 24h omitido para ${booking?.phone || "sin teléfono"}: falta plantilla recordatorio_24h aprobada.`
+  if (!shouldSendToBooking(booking)) return false;
+
+  const config = getCloudConfig();
+
+  await sendCloudTemplateMessage(
+    booking.phone,
+    config.reminder24hTemplate,
+    config.language,
+    bookingTemplateParams(booking, service)
   );
-  return false;
+
+  console.log(`Recordatorio 24h enviado a ${booking.phone}`);
+  return true;
 }
 
-async function sendReminder5h(booking, service) {
-  console.log(
-    `Recordatorio 5h omitido para ${booking?.phone || "sin teléfono"}: falta plantilla recordatorio_5h aprobada.`
+async function sendReminder3h(booking, service) {
+  if (!shouldSendToBooking(booking)) return false;
+
+  const config = getCloudConfig();
+
+  await sendCloudTemplateMessage(
+    booking.phone,
+    config.reminder3hTemplate,
+    config.language,
+    bookingTemplateParams(booking, service)
   );
-  return false;
+
+  console.log(`Recordatorio 3h enviado a ${booking.phone}`);
+  return true;
+}
+
+async function sendReminder1h(booking, service) {
+  if (!shouldSendToBooking(booking)) return false;
+
+  const config = getCloudConfig();
+
+  await sendCloudTemplateMessage(
+    booking.phone,
+    config.reminder1hTemplate,
+    config.language,
+    bookingTemplateParams(booking, service)
+  );
+
+  console.log(`Recordatorio 1h enviado a ${booking.phone}`);
+  return true;
 }
 
 function getTimeZoneParts(date, timeZone) {
@@ -273,20 +343,38 @@ async function processReminderQueue() {
     }
 
     if (
-      !booking.reminder5hSent &&
-      minutesLeft <= 5 * 60 &&
-      minutesLeft > 5 * 60 - REMINDER_WINDOW_MINUTES
+      !booking.reminder3hSent &&
+      minutesLeft <= 3 * 60 &&
+      minutesLeft > 3 * 60 - REMINDER_WINDOW_MINUTES
     ) {
       try {
-        const sent = await sendReminder5h(booking, service);
+        const sent = await sendReminder3h(booking, service);
         if (sent) {
           markBooking(booking.id, {
-            reminder5hSent: true,
-            reminder5hSentAt: nowIso(),
+            reminder3hSent: true,
+            reminder3hSentAt: nowIso(),
           });
         }
       } catch (error) {
-        console.error(`Error enviando recordatorio 5h reserva ${booking.id}:`, error.message);
+        console.error(`Error enviando recordatorio 3h reserva ${booking.id}:`, error.message);
+      }
+    }
+
+    if (
+      !booking.reminder1hSent &&
+      minutesLeft <= 60 &&
+      minutesLeft > 60 - REMINDER_WINDOW_MINUTES
+    ) {
+      try {
+        const sent = await sendReminder1h(booking, service);
+        if (sent) {
+          markBooking(booking.id, {
+            reminder1hSent: true,
+            reminder1hSentAt: nowIso(),
+          });
+        }
+      } catch (error) {
+        console.error(`Error enviando recordatorio 1h reserva ${booking.id}:`, error.message);
       }
     }
   }
