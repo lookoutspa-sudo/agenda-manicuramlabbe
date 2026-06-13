@@ -15,7 +15,7 @@ const availability = [
     weekday: 1,
     isOpen: true,
     startTime: "10:00",
-    endTime: "18:00",
+    endTime: "20:00",
     breakStart: "14:00",
     breakEnd: "15:30",
   },
@@ -23,15 +23,15 @@ const availability = [
     weekday: 2,
     isOpen: true,
     startTime: "10:00",
-    endTime: "18:00",
-    breakStart: "11:40",
+    endTime: "20:00",
+    breakStart: "13:00",
     breakEnd: "15:30",
   },
   {
     weekday: 3,
     isOpen: true,
     startTime: "10:00",
-    endTime: "18:00",
+    endTime: "20:00",
     breakStart: "14:00",
     breakEnd: "15:30",
   },
@@ -39,15 +39,15 @@ const availability = [
     weekday: 4,
     isOpen: true,
     startTime: "10:00",
-    endTime: "18:00",
-    breakStart: "11:40",
+    endTime: "20:00",
+    breakStart: "13:00",
     breakEnd: "15:30",
   },
   {
     weekday: 5,
     isOpen: true,
     startTime: "10:00",
-    endTime: "18:00",
+    endTime: "20:00",
     breakStart: "14:00",
     breakEnd: "15:30",
   },
@@ -67,7 +67,7 @@ updateData((data) => {
 });
 
 console.log("Horarios actualizados correctamente.");
-console.log("Lunes, miércoles y viernes: 10:00-14:00 / 15:30-18:00");
-console.log("Martes y jueves: 10:00-11:40 / 15:30-18:00");
+console.log("Lunes, miércoles y viernes: 10:00-14:00 / 15:30-20:00");
+console.log("Martes y jueves: 10:00-13:00 / 15:30-20:00");
 console.log("Sábado: 10:00-14:00");
 console.log("Domingo: cerrado");
