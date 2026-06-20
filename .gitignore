@@ -21,3 +21,5 @@ node_modules/
 client/node_modules/
 server-whatsapp-session/
 .wwebjs_cache/
+agenda-mlabbe-nails-*.json
+google-calendar-key*.json
